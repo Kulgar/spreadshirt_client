@@ -23,6 +23,10 @@ module SpreadshirtClient
     def base_url
       @base_url || "http://api.spreadshirt.net/api/v1"
     end
+    
+    def locale
+      @locale || nil
+    end
 
     def authorize(method, path, session = nil)
       time = Time.now.to_i
@@ -43,7 +47,7 @@ module SpreadshirtClient
     def url_for(path)
       return path if path =~ /\Ahttps?:\/\//
 
-      "#{base_url}#{path}"
+      "#{base_url}#{path}#{('?locale=' + locale) if locale}"
     end
 
     def headers_for(method_symbol, path, options)
