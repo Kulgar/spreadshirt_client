@@ -61,102 +61,89 @@ SpreadshirtClient.get "/shops/[shop_id]/articles", :params => { :limit => 50 }
 ## Examples
 
 ### Creating a basket on spreadshirt
-(This example is made for a Rails 3.X application)
 
-Create your own basket Model:
+(This example is made for Rails 3.x+ applications)
+
+Create your own basket model:
 
 ```bash
-$ rails generate Basket user_id:integer token:string spreadshirt_id:string shop_id:integer
+$ rails g model Basket spreadshirt_id:string:uniq
+```
+
+Run the migration
+
+```
 $ rake db:migrate
 ```
+
+Modify your model:
 
 ```ruby
 # An example of a basket model
 
-require 'rexml/document'
-require 'rexml/element'
-
 class Basket < ActiveRecord::Base
-  before_create :generate_token
-  
-  # Don't forget basket_items when they'll be created:
-  # has_many :basket_items, :dependent => :destroy
-  
-  # Get the spreadshirt basket XML or create it if it does not exist yet.
-  def find_or_create_spreadshirt_basket
-    # If the spreadshirt id is not defined, create the spreadshirt Basket using the API
-    if self.spreadshirt_id.blank?
-      # Warning: the spreadshirt response does not include the xml of the created basket,
-      # it only has some headers.
-      spreadshirt_response = SpreadshirtClient.post("/baskets", generate_payload_xml, :authorization => true)
-      spreadshirt_basket_id = spreadshirt_response.headers[:location].split("/").last
-      self.update_attribute(:spreadshirt_id, spreadshirt_basket_id)
-    else
-      # Get the basket XML from the Spreadshirt API:
-      SpreadshirtClient.get "/baskets/#{self.spreadshirt_id}", :authorization => true
+  before_create :create_spreadshirt_basket
+
+  # Find our stored basket by using the id previously provided by spreadshirt
+  def self.find_by_spreadshirt_id(spreadshirt_id)
+    basket = where(:spreadshirt_id => spreadshirt_id).first
+
+    return nil unless basket
+
+    begin
+      SpreadshirtClient.get "/baskets/#{spreadshirt_id}", :authorization => true
+    rescue RestClient::ResourceNotFound
+      return nil
     end
+
+    basket
   end
-  
-  # Generate the minimal payload expected by the spreadshirt API to create a basket
-  def generate_payload_xml
-    basket_xml = REXML::Document.new('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>')
-    basket_tag = basket_xml.add_element("basket")
-    basket_tag.attributes["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
-    basket_tag.attributes["xmlns"]       = "http://api.spreadshirt.net"
-    
-    # Optionals, but may be useful: 
-    basket_tag.add_element("token").text = self.token
-    basket_tag.add_element("shop", 
-        {"id" => self.shop_id, "xlink:href" => "#{SpreadshirtClient.base_url}/shops/#{self.shop_id}"})
-        
-    return basket_xml.to_s
-  end
-  
+
   private
-    def generate_token
-      # Generate a unique token that may be used instead of the spreadshirt_basket_id to retrieve a basket
-      # The generated token must have 40 characters according to the spreadshirt API documentation.
-      begin
-        self.token = SecureRandom.hex(20)
-      end while self.class.exists?(token: token)
+
+  # Create a spreadshirt basket with minimal payload
+  def create_spreadshirt_basket
+    xml = Builder::XmlMarkup.new
+    xml.instruct!
+
+    xml.basket :xmlns => "http://api.spreadshirt.net" do |basket|
+      basket.shop :id => $app_config.shop_id # Your shop id
     end
+
+    self.spreadshirt_id = SpreadshirtClient.post("/baskets", xml.target!, :authorization => true).headers[:location].split("/").last
+  end
 end
 ```
 
-Then, in your application, simply retrieves/creates your customer's basket and then do some fancy stuff: 
+Then, in your application, simply retrieve/create your customer's basket:
 
 ```ruby
 def current_basket
-  return @current_basket unless @current_basket.blank?
-  if cookies[:basket_token]
-    @current_basket = Basket.find_by_token(cookies[:basket_token].to_s)
-  else
-    new_basket = current_user.baskets.build
-    new_basket.shop_id = 1234 # Your SHOP_ID
-    if new_basket.save
-      cookies[:basket_token] = new_basket.token
-      # Call this function to set the spreadshirt id attribute of the basket.
-      # This attribute will be needed if you want to add basket items to the spreadshirt basket.
-      new_basket.find_or_create_spreadshirt_basket()
-      @current_basket = new_basket
-    end
-  end
+  return @current_basket if @current_basket
+
+  # Use spreadshirt's basket id stored in a cookie to retrieve the basket
+  @current_basket = Basket.find_by_spreadshirt_id(cookies[:spreadshirt_basket_id])
+  @current_basket ||= Basket.create! # Create the basket as it doesn't exist yet
+
+  cookies[:spreadshirt_basket_id] = @current_basket.spreadshirt_id
+
+  @current_basket
 end
 ```
 
+## Resources
 
-## Documentations
-Spreadshirt Documentations: 
-- [Spreadshirt API Documentations](http://developer.spreadshirt.net/display/API/API)
-- [Spreadshirt API Documentations - Basket resources](http://developer.spreadshirt.net/display/API/Basket+Resources)
+Spreadshirt API Docs:
+- [Spreadshirt API Documentation](http://developer.spreadshirt.net/display/API/API)
+- [Spreadshirt API Documentation - Basket resource](http://developer.spreadshirt.net/display/API/Basket+Resources)
 - [Spreadshirt API Browser - DemoApp](http://demoapp.spreadshirt.net/apibrowser/)
 
-SpreadshirtClient uses the RestClient gem to send requests to the SpreadshirtAPI. 
-- Look at the [RestClient gem documentations](https://github.com/rest-client/rest-client) to see how to handle the Spreadshirt API responses.
+SpreadshirtClient uses the RestClient gem to send requests to the Spreadshirt API:
+- Take a look into the [RestClient gem documentation](https://github.com/rest-client/rest-client) to see how to handle the Spreadshirt API responses.
 
-Using REXML: 
-- [REXML tutorial](http://www.germane-software.com/software/rexml/docs/tutorial.html)
-- [REXML RubyDocs](http://ruby-doc.org/stdlib-2.0/libdoc/rexml/rdoc/REXML.html)
+Builder Docs:
+- [Github](https://github.com/jimweirich/builder)
+- [RDOCS](http://builder.rubyforge.org/)
 
 ## Contributing
 
