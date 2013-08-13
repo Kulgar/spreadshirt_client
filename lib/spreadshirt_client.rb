@@ -6,7 +6,7 @@ require "timeout"
 
 module SpreadshirtClient
   class << self
-    attr_accessor :api_key, :api_secret
+    attr_accessor :api_key, :api_secret, :locale
 
     def timeout=(timeout)
       @timeout = timeout
@@ -22,10 +22,6 @@ module SpreadshirtClient
 
     def base_url
       @base_url || "http://api.spreadshirt.net/api/v1"
-    end
-    
-    def locale
-      @locale || nil
     end
 
     def authorize(method, path, session = nil)
@@ -47,7 +43,7 @@ module SpreadshirtClient
     def url_for(path)
       return path if path =~ /\Ahttps?:\/\//
 
-      "#{base_url}#{path}#{('?locale=' + locale) if locale}"
+      "#{base_url}#{path}"
     end
 
     def headers_for(method_symbol, path, options)
@@ -57,6 +53,7 @@ module SpreadshirtClient
 
       opts = options.dup
       opts.delete :session
+      opts[:params] = {:locale => locale} if locale
       opts.merge headers
     end
 

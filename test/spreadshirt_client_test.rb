@@ -92,5 +92,6 @@ class SpreadshirtClientTest < Test::Unit::TestCase
 
     assert_equal 200, SpreadshirtClient.delete("/baskets/1/items/1", :authorization => true)
   end
+  
 end
 
