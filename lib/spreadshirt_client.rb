@@ -48,12 +48,14 @@ module SpreadshirtClient
 
     def headers_for(method_symbol, path, options)
       headers = {}
-
       headers[:authorization] = authorize(method_for(method_symbol), path, options[:session]) if options[:authorization]
 
       opts = options.dup
       opts.delete :session
-      opts[:params] = {:locale => locale} if locale
+      
+      opts[:params] = {} unless opts.has_key?(:params)
+      opts[:params].merge!({:locale => locale}) unless locale.nil? || opts[:params].has_key?(:locale)
+      
       opts.merge headers
     end
 
